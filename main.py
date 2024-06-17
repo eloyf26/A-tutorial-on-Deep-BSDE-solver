@@ -1,32 +1,22 @@
 import numpy as np
 import tensorflow as tf
 from time import time
-from helper import DefaultRiskPricingModel, DTYPE, LEARNING_RATE, BATCH_SIZE
+from helper import DefaultRiskPricingModel, DTYPE, LEARNING_RATE, BATCH_SIZE, EPOCH_LIMIT
 
 # Configure learning rate and optimizer
 optimizer = tf.keras.optimizers.Adam(LEARNING_RATE, epsilon=1e-8)
 
 # Reference value for evaluation during training
 reference_value = 57.300
-
-# Store training metrics
 training_log = []
-
-# Set number of training iterations
-num_iterations = 6000
-
-
-# Print log header
 print('  Iteration  Loss  RelativeError   AbsoluteError   |   Time  LearningRate')
-
-# Record start time
 start_time = time()
 
 # Initialize the model (Step 1 in Figure 1.5)
 model = DefaultRiskPricingModel()
 
 # Training loop
-for iteration in range(num_iterations):
+for iteration in range(EPOCH_LIMIT):
     # Generate sample data (Step 2 in Figure 1.5)
     samples, increments = model.generate_samples(BATCH_SIZE)
     increments = tf.cast(increments, DTYPE)

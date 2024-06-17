@@ -1,7 +1,9 @@
 import numpy as np
 import tensorflow as tf
 
-# Define DNN constants
+# Define constants
+
+# SAMPLING constants
 DTYPE = np.float64
 DIMENSION = 100  # Problem dimensionality
 NUM_TIME_STEPS = 40  # Number of time steps
@@ -10,16 +12,22 @@ TIME_STEP_SIZE = 1.0 / (NUM_TIME_STEPS - 1)  # Time step size
 VOLATILITY = 0.2  # Example volatility parameter
 INITIAL_X = 100.0  # Initial value for x
 MEAN_RETURN = 0.02  # Mean return for x
+
+# EQUATION constants
 Y_INIT_MAX = 56
 Y_INIT_MIN = 55
-LEARNING_RATE = 1e-2
 INTEREST_RATE = 0.02
 DISCOUNT_FACTOR = 2.0/3
 HIGH_GAMMA = 0.2
 LOW_GAMMA = 0.02
 HIGH_THRESHOLD = 50
 LOW_THRESHOLD = 70
+
+# NETWORK constants
+LEARNING_RATE = 1e-2
 BATCH_SIZE = 16
+EPOCH_LIMIT = 6000
+
 
 # Define the DefaultRiskPricingModel class using TensorFlow Keras
 class DefaultRiskPricingModel(tf.keras.Model):
