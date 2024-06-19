@@ -4,7 +4,7 @@ import tensorflow as tf
 # Define constants
 
 # SAMPLING constants
-DTYPE = np.float64
+FLOAT_TYPE = np.float32
 DIMENSION = 100  # Problem dimensionality
 NUM_TIME_STEPS = 40  # Number of time steps
 TIME_GRID = np.linspace(0, 1, NUM_TIME_STEPS)  # Time discretization
@@ -33,10 +33,10 @@ EPOCH_LIMIT = 6000
 class DefaultRiskPricingModel(tf.keras.Model):
     def __init__(self):
         super().__init__()
-        self.dim = DIMENSION
-        self.num_time_interval = NUM_TIME_STEPS
-        self.delta_t = TIME_STEP_SIZE
-        self.sqrt_delta_t = np.sqrt(self.delta_t)
+        self.underlying_assets = DIMENSION
+        self.timestep_number = NUM_TIME_STEPS
+        self.dt = TIME_STEP_SIZE
+        self.sqrt_dt= np.sqrt(self.dt)
         self.initial_x = INITIAL_X
         self.volatility = VOLATILITY
         self.interest_rate = INTEREST_RATE
@@ -51,10 +51,10 @@ class DefaultRiskPricingModel(tf.keras.Model):
         # Initialize the network for initial value approximation
         self.Y_0 = tf.Variable(np.random.uniform(low=Y_INIT_MIN,
                                                  high=Y_INIT_MAX,
-                                                 size=[1]).astype(DTYPE))
+                                                 size=[1]).astype(FLOAT_TYPE))
         
         # Initialize the network for initial Z approximation
-        self.Z_0 = tf.Variable(np.random.uniform(-0.1, 0.1, size=(1, self.dim)).astype(DTYPE))
+        self.Z_0 = tf.Variable(np.random.uniform(-0.1, 0.1, size=(1, self.underlying_assets)).astype(FLOAT_TYPE))
 
         # Define helper functions for creating layers
         def dense_layer(units):
@@ -68,15 +68,20 @@ class DefaultRiskPricingModel(tf.keras.Model):
         # Initialize gradient estimators at each time step
         # This code is initializing what is shown in Figure 1.4
         self.gradient_estimators = []
-        for _ in range(self.num_time_interval - 1):
+        
+        for step in range(self.timestep_number - 1):
+            # First two layers in Figure 1,3
             gradient_estimator = tf.keras.Sequential()
-            gradient_estimator.add(tf.keras.layers.Input(self.dim))
+            gradient_estimator.add(tf.keras.layers.Input(self.underlying_assets))
             gradient_estimator.add(batch_norm_layer())
-            for _ in range(2):
-                gradient_estimator.add(dense_layer(self.dim + 10))
+            
+            # Hidden layers in Figure 1.3
+            for step in range(2):
+                gradient_estimator.add(dense_layer(self.underlying_assets + 10))
                 gradient_estimator.add(batch_norm_layer())
                 gradient_estimator.add(tf.keras.layers.ReLU())
-            gradient_estimator.add(dense_layer(self.dim))
+                
+            gradient_estimator.add(dense_layer(self.underlying_assets))
             gradient_estimator.add(batch_norm_layer())
             self.gradient_estimators.append(gradient_estimator)
             
@@ -92,38 +97,38 @@ class DefaultRiskPricingModel(tf.keras.Model):
 
     # Function to generate sample data
     def generate_samples(self, num_samples):
-        increments = np.random.normal(loc=0.0, scale=np.sqrt(self.delta_t), size=(num_samples, self.dim, self.num_time_interval)).astype(DTYPE)
-        samples = np.zeros((num_samples, self.dim, self.num_time_interval + 1), dtype=DTYPE)
-        samples[:, :, 0] = np.ones((num_samples, self.dim)) * self.initial_x
-        for i in range(self.num_time_interval):
-            samples[:, :, i + 1] = (1 + self.mean_return * self.delta_t) * samples[:, :, i] + (self.volatility * samples[:, :, i] * increments[:, :, i])
+        increments = self.sqrt_dt * np.random.normal(size=(num_samples, self.underlying_assets, self.timestep_number)).astype(FLOAT_TYPE)
+        samples = np.zeros((num_samples, self.underlying_assets, self.timestep_number + 1), dtype=FLOAT_TYPE)
+        samples[:, :, 0] = np.ones((num_samples, self.underlying_assets)) * self.initial_x
+        for i in range(self.timestep_number):
+            samples[:, :, i + 1] = samples[:, :, i] + self.mean_return * self.dt * samples[:, :, i] + (self.volatility * samples[:, :, i] * increments[:, :, i])
         return samples, increments
 
     # Function for forward pass
     def forward_pass(self, inputs):
         samples, increments = inputs
         num_samples = samples.shape[0]
-        ones_vector = tf.ones(shape=[num_samples, 1], dtype=DTYPE)
+        ones_vector = tf.ones(shape=[num_samples, 1], dtype=FLOAT_TYPE)
         
         y_values = ones_vector * tf.identity(self.Y_0)
         gradient_values = ones_vector * self.Z_0
 
         # Iterate through time steps
-        for i in range(self.num_time_interval - 1):
+        for i in range(self.timestep_number - 1):
             time_step = TIME_GRID[i]
             
             # Compute updates (use Equation 1.22)
-            term1 = self.forward_function(time_step, samples[:, :, i], y_values, gradient_values) * self.delta_t
-            term2 = tf.reduce_sum(tf.cast(gradient_values, DTYPE) * increments[:, :, i], axis=1, keepdims=True)
+            term1 = self.forward_function(time_step, samples[:, :, i], y_values, gradient_values) * self.dt
+            term2 = tf.reduce_sum(tf.cast(gradient_values, FLOAT_TYPE) * increments[:, :, i], axis=1, keepdims=True)
             y_values = y_values - term1 + term2
             
             # Update gradient approximations to take dimension into account (just a trick to improve convergence)        
-            gradient_values = self.gradient_estimators[i](samples[:, :, i + 1]) / self.dim
+            gradient_values = self.gradient_estimators[i](samples[:, :, i + 1]) / self.underlying_assets
 
         # Final update
-        final_time_step = TIME_GRID[self.num_time_interval - 1]
-        term1 = self.forward_function(final_time_step, samples[:, :, -1], y_values, gradient_values) * self.delta_t
-        term2 = tf.reduce_sum(tf.cast(gradient_values, DTYPE) * increments[:, :, -1], axis=1, keepdims=True)
+        final_time_step = TIME_GRID[self.timestep_number - 1]
+        term1 = self.forward_function(final_time_step, samples[:, :, -1], y_values, gradient_values) * self.dt
+        term2 = tf.reduce_sum(tf.cast(gradient_values, FLOAT_TYPE) * increments[:, :, -1], axis=1, keepdims=True)
         y_values = y_values - term1 + term2
 
         return y_values
@@ -133,11 +138,9 @@ class DefaultRiskPricingModel(tf.keras.Model):
         samples, _ = inputs
         
         # Step 3 in Figure 1.5
-        print(samples.shape)
         predicted_values = self.forward_pass(inputs)
         
         # Step 4 in Figure 1.5
-        print(predicted_values)
         terminal_values = self.terminal_condition(samples[:, :, -1])
         loss = tf.reduce_mean(tf.square(terminal_values - predicted_values))
         

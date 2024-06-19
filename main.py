@@ -1,25 +1,24 @@
 import numpy as np
 import tensorflow as tf
 from time import time
-from helper import DefaultRiskPricingModel, DTYPE, LEARNING_RATE, BATCH_SIZE, EPOCH_LIMIT
+from helper import DefaultRiskPricingModel, FLOAT_TYPE, LEARNING_RATE, BATCH_SIZE, EPOCH_LIMIT
 
 # Configure learning rate and optimizer
-optimizer = tf.keras.optimizers.Adam(LEARNING_RATE, epsilon=1e-8)
-
+optimizer = tf.keras.optimizers.Adam(learning_rate= tf.keras.optimizers.schedules.PiecewiseConstantDecay([3000],[LEARNING_RATE,LEARNING_RATE]))
 # Reference value for evaluation during training
 reference_value = 57.300
 training_log = []
-print('  Iteration  Loss  RelativeError   AbsoluteError   |   Time  LearningRate')
 start_time = time()
 
 # Initialize the model (Step 1 in Figure 1.5)
 model = DefaultRiskPricingModel()
+training_log = []
 
 # Training loop
 for iteration in range(EPOCH_LIMIT):
     # Generate sample data (Step 2 in Figure 1.5)
     samples, increments = model.generate_samples(BATCH_SIZE)
-    increments = tf.cast(increments, DTYPE)
+    increments = tf.cast(increments, FLOAT_TYPE)
     
     # Compute loss and gradients (Steps 3 and 4)
     loss, gradients = model.get_gradients((samples, increments))
@@ -34,9 +33,25 @@ for iteration in range(EPOCH_LIMIT):
     elapsed_time = time() - start_time
     absolute_error = np.abs(y_current - reference_value)
     relative_error = absolute_error / reference_value
-    log_entry = (iteration, loss.numpy(), y_current, relative_error, absolute_error, elapsed_time, LEARNING_RATE)
-    training_log.append(log_entry)
-    
+    # Append log entry to training log
+    training_log.append({
+        'Iteration': iteration,
+        'Loss': loss.numpy(),
+        'Y Current': y_current,
+        'Relative Error': relative_error,
+        'Absolute Error': absolute_error,
+        'Elapsed Time': elapsed_time,
+        'Learning Rate': LEARNING_RATE
+    })
+
     # Print progress every 10 iterations
     if iteration % 10 == 0:
-        print('{:5d} {:12.4f} {:8.4f} {:8.4f}  {:8.4f}   | {:6.1f}  {:6.2e}'.format(*log_entry))
+        print(f"Iteration: {iteration}")
+        print(f"Loss: {loss.numpy():.4f}")
+        print(f"Y Current: {y_current:.4f}")
+        print(f"Relative Error: {relative_error:.4f}")
+        print(f"Absolute Error: {absolute_error:.4f}")
+        print(f"Elapsed Time: {elapsed_time:.1f} seconds")
+        print(f"Learning Rate: {LEARNING_RATE:.2e}")
+        print("-" * 50)
+
